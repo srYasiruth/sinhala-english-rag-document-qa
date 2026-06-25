@@ -115,6 +115,36 @@ Pull the recommended local model:
 ollama pull qwen3:4b
 ```
 
+### One-Click Windows Startup
+
+For the easiest local startup on Windows, use the launcher in the project root:
+
+```powershell
+.\start_app.bat
+```
+
+You can also run the PowerShell launcher directly:
+
+```powershell
+.\start_app.ps1
+```
+
+The launcher will:
+
+- Check that Ollama, Python, and npm are available.
+- Start the Ollama server if it is not already running.
+- Check whether the `qwen3:4b` model is available and pull it if missing.
+- Create `backend/.env` from `backend/.env.example` if needed.
+- Create the backend virtual environment if needed.
+- Install backend dependencies if the virtual environment is missing.
+- Install frontend dependencies if `node_modules/` is missing.
+- Start the FastAPI backend in a visible log window.
+- Start the Vite frontend in a visible log window.
+- Open the app automatically at `http://localhost:5173`.
+- Write runtime logs to the local `logs/` folder.
+
+Keep the Ollama, backend, and frontend windows open while using the app. Close those windows when you want to stop the system.
+
 ### Backend Setup
 
 ```powershell
@@ -150,14 +180,24 @@ http://localhost:5173
 
 ## Usage
 
+### Beginner Startup
+
+1. Double-click `start_app.bat` or run `.\start_app.bat` from PowerShell.
+2. Wait for the launcher to open the browser at `http://localhost:5173`.
+3. Upload a Sinhala, English, or mixed-language PDF, DOCX, or TXT file.
+4. Select one or more documents from the document panel.
+5. Ask a question in Sinhala or English.
+6. Review the generated answer, confidence score, and cited source passages.
+7. Use the admin panel to inspect document counts, indexed chunks, chat history, and retrieval activity.
+
+### Manual Startup
+
+Use these steps if you prefer to run each service yourself:
+
 1. Start Ollama and make sure the Qwen model is available.
 2. Start the FastAPI backend on port `8000`.
 3. Start the React frontend on port `5173`.
-4. Upload a Sinhala, English, or mixed-language PDF, DOCX, or TXT file.
-5. Select one or more documents from the document panel.
-6. Ask a question in Sinhala or English.
-7. Review the generated answer, confidence score, and cited source passages.
-8. Use the admin panel to inspect document counts, indexed chunks, chat history, and retrieval activity.
+4. Open `http://localhost:5173` in your browser.
 
 ## API Endpoints
 
@@ -209,7 +249,9 @@ http://localhost:5173
 |       `-- .gitkeep             # Screenshot placeholder directory
 |-- .gitignore
 |-- LICENSE
-`-- README.md
+|-- README.md
+|-- start_app.bat                # Windows double-click launcher
+`-- start_app.ps1                # Windows PowerShell startup script
 ```
 
 ## Example Screenshots
@@ -253,7 +295,7 @@ The current test suite covers text normalization, Sinhala/English question-langu
 ## Author
 
 **013th**  
-Email: `total13@gmail.com`
+Email: `sahanryasiruth01@gmail.com`
 
 ## License
 
