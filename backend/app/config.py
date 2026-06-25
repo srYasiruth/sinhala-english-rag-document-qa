@@ -12,11 +12,15 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:4b"
+    ollama_timeout_seconds: int = 300
+    ollama_keep_alive: str = "10m"
+    max_context_chars: int = 12000
+    max_source_chars: int = 3000
     chunk_size_tokens: int = 500
     chunk_overlap_tokens: int = 50
     retrieval_top_k: int = 5
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def ensure_runtime_dirs(self) -> None:
         self.upload_dir.mkdir(parents=True, exist_ok=True)

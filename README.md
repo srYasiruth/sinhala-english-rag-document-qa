@@ -280,6 +280,25 @@ python -m compileall app
 
 The current test suite covers text normalization, Sinhala/English question-language routing, chunk overlap behavior, LLM fallback language behavior, API schema contracts, and the six required language-direction cases.
 
+## Troubleshooting
+
+### Large documents or Sinhala questions time out
+
+Large retrieved passages and Sinhala generation can take longer on local CPU/GPU resources. The backend keeps the existing answer style but limits only the context sent to Ollama and uses a longer timeout:
+
+```text
+OLLAMA_TIMEOUT_SECONDS=300
+OLLAMA_KEEP_ALIVE="10m"
+MAX_CONTEXT_CHARS=12000
+MAX_SOURCE_CHARS=3000
+```
+
+If you already have `backend/.env`, add these values manually or recreate it from `backend/.env.example`. If answers still time out, increase `OLLAMA_TIMEOUT_SECONDS`.
+
+### Backend fails after changing `.env`
+
+If the backend does not start after editing `.env`, compare it with `backend/.env.example` and remove unsupported keys. The current backend ignores unknown keys, but keeping `.env` aligned with `.env.example` makes troubleshooting easier.
+
 ## Future Improvements
 
 - Add authentication and role-based access control.
@@ -294,7 +313,7 @@ The current test suite covers text normalization, Sinhala/English question-langu
 
 ## Author
 
-**013th**  
+**LDCSR Yasiruth**
 Email: `sahanryasiruth01@gmail.com`
 
 ## License
