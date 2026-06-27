@@ -4,8 +4,9 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db
+from app.errors import IndexingError
 from app.models import Conversation, Document, RetrievalLog
-from app.rag import admin_counts, answer_question, delete_document, ingest_document
+from app.rag import admin_counts, answer_question, clear_conversations, delete_conversation, delete_document, ingest_document
 from app.schemas import (
     AdminStatsOut,
     ConversationOut,
@@ -42,6 +43,8 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         return await ingest_document(file, db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except IndexingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/api/documents", response_model=list[DocumentOut])
@@ -64,6 +67,18 @@ async def query_documents(payload: QueryIn, db: Session = Depends(get_db)) -> Qu
 @app.get("/api/chat/history", response_model=list[ConversationOut])
 def chat_history(db: Session = Depends(get_db)) -> list[Conversation]:
     return list(db.query(Conversation).order_by(desc(Conversation.created_at)).limit(50).all())
+
+
+@app.delete("/api/chat/history/{conversation_id}")
+def remove_chat_history_item(conversation_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    if not delete_conversation(conversation_id, db):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"deleted": True}
+
+
+@app.delete("/api/chat/history")
+def clear_chat_history(db: Session = Depends(get_db)) -> dict[str, int]:
+    return {"deleted": clear_conversations(db)}
 
 
 @app.get("/api/admin/stats", response_model=AdminStatsOut)

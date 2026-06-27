@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  BarChart3,
   FileText,
   History,
   Loader2,
@@ -30,15 +29,26 @@ type Source = {
   page_number: number | null;
   text: string;
   score: number;
+  language_mix: string;
   highlights: string[];
 };
 
 type QueryResponse = {
   question: string;
   question_language: string;
+  answer_language: string;
   answer: string;
   confidence: number;
   sources: Source[];
+  debug?: {
+    question_language: string;
+    target_document_languages: string[];
+    query_variants: string[];
+    translated_queries: string[];
+    candidate_chunks: Record<string, unknown>[];
+    final_chunks: Record<string, unknown>[];
+    answer_language: string;
+  } | null;
 };
 
 type Conversation = {
@@ -46,15 +56,9 @@ type Conversation = {
   question: string;
   answer: string;
   question_language: string;
+  answer_language?: string | null;
   confidence: number;
   created_at: string;
-};
-
-type Stats = {
-  documents: number;
-  chunks: number;
-  conversations: number;
-  retrieval_logs: number;
 };
 
 const API = "";
@@ -74,22 +78,17 @@ function App() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<QueryResponse | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  const selectedCount = selectedIds.length || documents.length;
-
   async function refresh() {
-    const [docs, chatHistory, adminStats] = await Promise.all([
+    const [docs, chatHistory] = await Promise.all([
       jsonFetch<DocumentItem[]>(`${API}/api/documents`),
-      jsonFetch<Conversation[]>(`${API}/api/chat/history`),
-      jsonFetch<Stats>(`${API}/api/admin/stats`)
+      jsonFetch<Conversation[]>(`${API}/api/chat/history`)
     ]);
     setDocuments(docs);
     setHistory(chatHistory);
-    setStats(adminStats);
   }
 
   useEffect(() => {
@@ -98,7 +97,7 @@ function App() {
 
   const languageLabel = useMemo(() => {
     if (!answer) return "Waiting";
-    return answer.question_language === "si" ? "Sinhala" : "English";
+    return answer.answer_language === "si" ? "Sinhala" : "English";
   }, [answer]);
 
   async function uploadFile(file: File) {
@@ -123,6 +122,25 @@ function App() {
     setError("");
     await jsonFetch(`${API}/api/documents/${id}`, { method: "DELETE" });
     setSelectedIds((current) => current.filter((item) => item !== id));
+    await refresh();
+  }
+
+  async function deleteHistoryItem(id: number) {
+    setError("");
+    await jsonFetch(`${API}/api/chat/history/${id}`, { method: "DELETE" });
+    if (answer?.sources.length === 0 && history.find((item) => item.id === id)?.question === answer.question) {
+      setAnswer(null);
+    }
+    await refresh();
+  }
+
+  async function clearHistory() {
+    if (!window.confirm("Clear all chat history?")) return;
+    setError("");
+    await jsonFetch(`${API}/api/chat/history`, { method: "DELETE" });
+    if (answer?.sources.length === 0) {
+      setAnswer(null);
+    }
     await refresh();
   }
 
@@ -161,7 +179,6 @@ function App() {
       <section className="toolbar">
         <div>
           <h1>Sinhala + English Local RAG</h1>
-          <p>{selectedCount} document scope - answers follow the question language</p>
         </div>
         <label className="upload-button" title="Upload PDF, DOCX, or TXT">
           {uploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />}
@@ -278,37 +295,41 @@ function App() {
 
         <aside className="panel side-panel">
           <div className="panel-title">
-            <BarChart3 size={18} />
-            <h2>Admin</h2>
-          </div>
-          <div className="stat-grid">
-            <span>Documents <strong>{stats?.documents ?? 0}</strong></span>
-            <span>Chunks <strong>{stats?.chunks ?? 0}</strong></span>
-            <span>Chats <strong>{stats?.conversations ?? 0}</strong></span>
-            <span>Retrievals <strong>{stats?.retrieval_logs ?? 0}</strong></span>
-          </div>
-
-          <div className="panel-title history-title">
             <History size={18} />
             <h2>History</h2>
+            {history.length > 0 && (
+              <button className="clear-history" onClick={() => clearHistory().catch((err) => setError(err.message))}>
+                Clear all
+              </button>
+            )}
           </div>
           <div className="history-list">
             {history.map((item) => (
-              <button
-                key={item.id}
-                onClick={() =>
-                  setAnswer({
-                    question: item.question,
-                    answer: item.answer,
-                    question_language: item.question_language,
-                    confidence: item.confidence,
-                    sources: []
-                  })
-                }
-              >
-                <strong>{item.question}</strong>
-                <span>{new Date(item.created_at).toLocaleString()}</span>
-              </button>
+              <div className="history-row" key={item.id}>
+                <button
+                  className="history-open"
+                  onClick={() =>
+                    setAnswer({
+                      question: item.question,
+                      answer: item.answer,
+                      question_language: item.question_language,
+                      answer_language: item.answer_language ?? item.question_language,
+                      confidence: item.confidence,
+                      sources: []
+                    })
+                  }
+                >
+                  <strong>{item.question}</strong>
+                  <span>{new Date(item.created_at).toLocaleString()}</span>
+                </button>
+                <button
+                  className="history-delete"
+                  title="Delete history item"
+                  onClick={() => deleteHistoryItem(item.id).catch((err) => setError(err.message))}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             ))}
             {!history.length && <p className="empty">No conversations yet.</p>}
           </div>

@@ -48,39 +48,57 @@ class LLMService:
     async def answer(
         self,
         question: str,
-        question_language: str,
+        answer_language: str,
         sources: list[SourceOut],
         summarize: bool = False,
     ) -> str:
         if not sources:
-            return INSUFFICIENT.get(question_language, INSUFFICIENT["en"])
+            return INSUFFICIENT.get(answer_language, INSUFFICIENT["en"])
 
-        prompt = self._build_prompt(question, question_language, sources, summarize)
+        prompt = self._build_prompt(question, answer_language, sources, summarize)
         try:
             return await self._ollama_generate(prompt)
         except httpx.TimeoutException:
             logger.exception("Ollama timed out while generating an answer.")
-            return self._fallback(question_language, "timeout")
+            return self._fallback(answer_language, "timeout")
         except (httpx.HTTPError, RuntimeError):
             logger.exception("Ollama failed while generating an answer.")
-            return self._fallback(question_language, "unavailable")
+            return self._fallback(answer_language, "unavailable")
         except Exception:
             logger.exception("Unexpected LLM generation failure.")
-            return self._fallback(question_language, "unavailable")
+            return self._fallback(answer_language, "unavailable")
+
+    async def translate_query(self, question: str, target_language: str) -> str | None:
+        language_name = answer_language_name(target_language)
+        prompt = f"""Translate this search query into {language_name}.
+Return only the translated query. Do not answer the question. Do not add explanations.
+
+Query:
+{question}
+
+Translated query:"""
+        try:
+            translated = await self._ollama_generate(prompt)
+        except Exception:
+            logger.exception("Ollama failed while translating a retrieval query.")
+            return None
+        translated = translated.strip().strip('"').strip("'")
+        return translated if translated and translated.lower() != question.lower() else None
 
     def _build_prompt(
         self,
         question: str,
-        question_language: str,
+        answer_language: str,
         sources: list[SourceOut],
         summarize: bool,
     ) -> str:
-        language_name = answer_language_name(question_language)
+        language_name = answer_language_name(answer_language)
         context = self._build_context(sources)
         summary_instruction = "Include a short summary after the answer." if summarize else "Do not add a separate summary."
         return f"""You are a document question-answering assistant.
-Answer only using the provided context. If the answer is not present, say there is not enough information.
-Answer in {language_name}. {summary_instruction}
+Answer strictly in {language_name}. The answer language is selected from the user's question or explicit language request.
+Do not switch languages unless the user explicitly requested it. Use only the provided document context.
+If the answer is not available in the context, say so in {language_name}. {summary_instruction}
 
 Context:
 {context}
@@ -128,6 +146,6 @@ Answer:"""
                 raise RuntimeError("Empty Ollama response")
             return answer
 
-    def _fallback(self, question_language: str, reason: str) -> str:
+    def _fallback(self, answer_language: str, reason: str) -> str:
         messages = FALLBACKS.get(reason, FALLBACKS["unavailable"])
-        return messages.get(question_language, messages["en"])
+        return messages.get(answer_language, messages["en"])

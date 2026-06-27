@@ -4,6 +4,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.text_processing import detect_language
 
 
 class Document(Base):
@@ -45,6 +46,11 @@ class Conversation(Base):
     question_language: Mapped[str] = mapped_column(String(20), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    @property
+    def answer_language(self) -> str:
+        language = detect_language(self.answer)
+        return language if language in {"si", "en"} else self.question_language
 
 
 class RetrievalLog(Base):

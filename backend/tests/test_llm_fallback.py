@@ -64,6 +64,7 @@ def source(text: str, chunk_id: str = "c1") -> SourceOut:
         text=text,
         page_number=None,
         score=0.9,
+        language_mix="en",
     )
 
 
@@ -106,6 +107,29 @@ async def test_ollama_payload_uses_configured_timeout_and_keep_alive(
 
 
 @pytest.mark.asyncio
+async def test_prompt_uses_selected_user_answer_language(
+    monkeypatch: pytest.MonkeyPatch,
+    service: LLMService,
+) -> None:
+    FakeAsyncClient.payloads = []
+    FakeAsyncClient.response_payload = {"response": "Generated answer"}
+    FakeAsyncClient.exception = None
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+    await service.answer(
+        "Earth \u0d9c\u0dd0\u0db1 \u0d9a\u0dd2\u0dba\u0db1\u0dca\u0db1\u0dda \u0d9a\u0dd4\u0db8\u0d9a\u0dca\u0daf?",
+        "en",
+        [source("This is English context.")],
+    )
+
+    prompt = FakeAsyncClient.payloads[0]["prompt"]
+    assert "Answer strictly in English." in prompt
+    assert "selected from the user's question or explicit language request" in prompt
+    assert "Use only the provided document context." in prompt
+    assert "same language as the provided document context" not in prompt
+
+
+@pytest.mark.asyncio
 async def test_timeout_returns_sinhala_timeout_fallback(
     monkeypatch: pytest.MonkeyPatch,
     service: LLMService,
@@ -118,6 +142,24 @@ async def test_timeout_returns_sinhala_timeout_fallback(
 
     assert "වැඩි වේලාවක්" in answer
     assert "OLLAMA_TIMEOUT_SECONDS" in answer
+
+
+@pytest.mark.asyncio
+async def test_sinhala_question_with_english_context_returns_english_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    service: LLMService,
+) -> None:
+    FakeAsyncClient.payloads = []
+    FakeAsyncClient.exception = httpx.ConnectError("connection failed")
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+    answer = await service.answer(
+        "Earth \u0d9c\u0dd0\u0db1 \u0d9a\u0dd2\u0dba\u0db1\u0dca\u0db1\u0dda \u0d9a\u0dd4\u0db8\u0d9a\u0dca\u0daf?",
+        "en",
+        [source("This is English context.")],
+    )
+
+    assert answer.startswith("The local LLM service is unavailable")
 
 
 @pytest.mark.asyncio

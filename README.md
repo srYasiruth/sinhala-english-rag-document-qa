@@ -8,25 +8,26 @@ The project is designed to be completely free to run locally: no paid APIs, no h
 
 This application helps users explore Sinhala, English, and mixed-language documents through natural-language questions. It supports cross-language retrieval and answer generation, so the document language and question language do not need to match.
 
-The answer language follows the user's question language:
+The answer language follows the user's question language by default. If the user explicitly asks for English or Sinhala output, that requested language is used:
 
 - Sinhala document + Sinhala question -> Sinhala answer
 - English document + English question -> English answer
 - Sinhala document + English question -> English answer
 - English document + Sinhala question -> Sinhala answer
-- Mixed Sinhala/English document + Sinhala question -> Sinhala answer
-- Mixed Sinhala/English document + English question -> English answer
+
+Retrieved context and citations still come from the uploaded documents, and answers are generated only from that context.
 
 ## Features
 
 - Upload and index PDF, DOCX, and TXT documents.
 - Extract text with PyMuPDF and `python-docx`.
 - Normalize Unicode text while preserving Sinhala characters.
-- Chunk document text into 500-token windows with 50-token overlap.
-- Generate multilingual embeddings with `paraphrase-multilingual-MiniLM-L12-v2`.
+- Chunk document text with Sinhala-safe paragraph-aware chunking.
+- Generate multilingual embeddings with `intfloat/multilingual-e5-base`.
 - Store semantic vectors locally in ChromaDB.
 - Ask Sinhala or English questions across one or many documents.
-- Retrieve the top 5 most relevant chunks for each question.
+- Retrieve with original and translated local query variants, then merge and deduplicate results.
+- Apply lightweight keyword boosting for exact Sinhala/English terms, numbers, names, and section labels.
 - Generate grounded answers using a local Ollama-compatible Qwen model.
 - Fall back gracefully when the local LLM is unavailable.
 - Display source citations, similarity confidence, page metadata, and keyword highlights.
@@ -50,11 +51,11 @@ Unicode normalization + whitespace cleanup
         |
         v
 Chunking
-500 tokens + 50 token overlap
+Paragraph-aware chunks, 700 tokens + 120 overlap
         |
         v
 Embedding Model
-paraphrase-multilingual-MiniLM-L12-v2
+intfloat/multilingual-e5-base
         |
         v
 Vector Database
@@ -65,18 +66,30 @@ Sinhala or English
         |
         v
 Question Language Detection
-Sinhala if Sinhala script is present, otherwise English
+Stored for chat metadata/history
         |
         v
 Question Embedding
-MiniLM embedding model
+E5 query embedding
         |
         v
-Similarity Search
-Top K = 5
+Cross-Lingual Query Expansion
+Original query + local Ollama translation when needed
+        |
+        v
+Multi-Query Retrieval
+Vector search + lightweight keyword boost
+        |
+        v
+Merge + Deduplicate + Rank
+Candidate K = 15, final Top K = 5
         |
         v
 Retrieved Source Chunks
+        |
+        v
+Answer Language Selection
+Majority language among top retrieved chunks
         |
         v
 Local LLM
@@ -84,7 +97,7 @@ Ollama + Qwen3 4B
         |
         v
 Grounded Answer + Citations
-Answer language follows question language
+Answer language follows question or explicit user request
 ```
 
 ## Technologies Used
@@ -94,7 +107,7 @@ Answer language follows question language
 | Frontend | React 19, Vite, TypeScript, Lucide React, CSS |
 | Backend | Python, FastAPI, Pydantic, SQLAlchemy |
 | Document Processing | PyMuPDF, python-docx |
-| Embeddings | SentenceTransformers, `paraphrase-multilingual-MiniLM-L12-v2` |
+| Embeddings | SentenceTransformers, `intfloat/multilingual-e5-base`; MiniLM can be used as a lightweight fallback |
 | Vector Store | ChromaDB persistent local collection |
 | LLM Runtime | Ollama with Qwen3 4B |
 | Database | SQLite |
@@ -278,7 +291,7 @@ Useful checks:
 python -m compileall app
 ```
 
-The current test suite covers text normalization, Sinhala/English question-language routing, chunk overlap behavior, LLM fallback language behavior, API schema contracts, and the six required language-direction cases.
+The current test suite covers text normalization, paragraph-aware chunking, E5 query/passage prefixes, cross-lingual query expansion, retrieved-context answer-language routing, LLM fallback language behavior, API schema contracts, and the required document/question language-direction cases.
 
 ## Troubleshooting
 
@@ -294,6 +307,32 @@ MAX_SOURCE_CHARS=3000
 ```
 
 If you already have `backend/.env`, add these values manually or recreate it from `backend/.env.example`. If answers still time out, increase `OLLAMA_TIMEOUT_SECONDS`.
+
+### Reindex after embedding model changes
+
+The default embedding model is `intfloat/multilingual-e5-base`. The first upload can take a long time because the model is downloaded and cached locally from Hugging Face. After the download finishes, later indexing runs are faster.
+
+You can pre-cache the model before starting the app:
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-base')"
+```
+
+The vector database uses a separate Chroma collection for each embedding model, because E5 vectors have 768 dimensions while MiniLM vectors have 384 dimensions. If you previously indexed documents with MiniLM, delete and re-upload those documents so SQLite metadata and Chroma vectors stay aligned.
+
+If you need the older lightweight model for faster indexing, set:
+
+```text
+EMBEDDING_MODEL="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+```
+
+Then restart the backend and re-upload documents again after changing the model.
+
+### Debug retrieval
+
+The chat API accepts `debug: true` in `POST /api/chat/query`. Debug responses include detected question language, target document languages, query variants, translated queries, candidate chunks, final chunks, and final answer language. The current UI ignores this field, but it is useful when checking whether a failure comes from translation, embedding retrieval, keyword matching, chunking, or the final LLM answer.
 
 ### Backend fails after changing `.env`
 
